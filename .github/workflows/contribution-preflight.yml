@@ -10,6 +10,14 @@ name: Contribution preflight
         description: Full upstream baseline SHA
         required: true
         type: string
+      suite:
+        description: all or containers (retry container setup only)
+        required: true
+        default: all
+        type: choice
+        options:
+        - all
+        - containers
 permissions:
   contents: read
 jobs:
@@ -36,6 +44,7 @@ jobs:
         PATCH_SHA: ${{ inputs.patch_sha }}
         BASE_SHA: ${{ inputs.base_sha }}
       run: |-
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         test "$(git rev-parse HEAD)" = "$PATCH_SHA"
         git merge-base --is-ancestor "$BASE_SHA" HEAD
         git log -1 --format=fuller
@@ -45,6 +54,7 @@ jobs:
         swift build --target generate-manual
         swift build --target generate-docc-reference
         swift test
+    if: ${{ inputs.suite == 'all' || inputs.suite == 'containers' }}
   macos:
     runs-on: macos-26
     strategy:
@@ -66,6 +76,7 @@ jobs:
         PATCH_SHA: ${{ inputs.patch_sha }}
         BASE_SHA: ${{ inputs.base_sha }}
       run: |-
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         test "$(git rev-parse HEAD)" = "$PATCH_SHA"
         git merge-base --is-ancestor "$BASE_SHA" HEAD
         git log -1 --format=fuller
@@ -79,6 +90,7 @@ jobs:
         swift build --target generate-manual
         swift build --target generate-docc-reference
         swift test
+    if: ${{ inputs.suite == 'all' }}
   windows:
     runs-on: windows-2022
     strategy:
@@ -102,6 +114,7 @@ jobs:
         PATCH_SHA: ${{ inputs.patch_sha }}
         BASE_SHA: ${{ inputs.base_sha }}
       run: |-
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         test "$(git rev-parse HEAD)" = "$PATCH_SHA"
         git merge-base --is-ancestor "$BASE_SHA" HEAD
         git log -1 --format=fuller
@@ -116,6 +129,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         docker run --rm -v "${env:GITHUB_WORKSPACE}:C:\source" -w C:\source $image powershell.exe -NoLogo -Command 'swift --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; swift test; exit $LASTEXITCODE'
         exit $LASTEXITCODE
+    if: ${{ inputs.suite == 'all' }}
   wasm:
     runs-on: ubuntu-24.04
     strategy:
@@ -138,6 +152,7 @@ jobs:
         PATCH_SHA: ${{ inputs.patch_sha }}
         BASE_SHA: ${{ inputs.base_sha }}
       run: |-
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         test "$(git rev-parse HEAD)" = "$PATCH_SHA"
         git merge-base --is-ancestor "$BASE_SHA" HEAD
         git log -1 --format=fuller
@@ -149,6 +164,7 @@ jobs:
         path: validation-tools
     - run: validation-tools/.github/workflows/scripts/install-and-build-with-sdk.sh --wasm --build-command="swift build --target
         ArgumentParser" "${{ matrix.swift }}"
+    if: ${{ inputs.suite == 'all' || inputs.suite == 'containers' }}
   docs:
     runs-on: ubuntu-24.04
     container:
@@ -164,6 +180,7 @@ jobs:
         PATCH_SHA: ${{ inputs.patch_sha }}
         BASE_SHA: ${{ inputs.base_sha }}
       run: |-
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         test "$(git rev-parse HEAD)" = "$PATCH_SHA"
         git merge-base --is-ancestor "$BASE_SHA" HEAD
         git log -1 --format=fuller
@@ -174,6 +191,7 @@ jobs:
         ref: b9633883fec533530ebd7d5e82ef8ca832c2035f
         path: validation-tools
     - run: validation-tools/.github/workflows/scripts/check-docs.sh
+    if: ${{ inputs.suite == 'all' || inputs.suite == 'containers' }}
   format:
     runs-on: ubuntu-24.04
     container:
@@ -189,6 +207,7 @@ jobs:
         PATCH_SHA: ${{ inputs.patch_sha }}
         BASE_SHA: ${{ inputs.base_sha }}
       run: |-
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         test "$(git rev-parse HEAD)" = "$PATCH_SHA"
         git merge-base --is-ancestor "$BASE_SHA" HEAD
         git log -1 --format=fuller
@@ -201,6 +220,7 @@ jobs:
     - run: |-
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         validation-tools/.github/workflows/scripts/check-swift-format.sh
+    if: ${{ inputs.suite == 'all' || inputs.suite == 'containers' }}
   cmake:
     runs-on: ubuntu-24.04
     container:
@@ -216,6 +236,7 @@ jobs:
         PATCH_SHA: ${{ inputs.patch_sha }}
         BASE_SHA: ${{ inputs.base_sha }}
       run: |-
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         test "$(git rev-parse HEAD)" = "$PATCH_SHA"
         git merge-base --is-ancestor "$BASE_SHA" HEAD
         git log -1 --format=fuller
@@ -230,6 +251,7 @@ jobs:
         cmake --version
         cmake -GNinja -S . -B .cmake-build -DBUILD_EXAMPLES=1 -DBUILD_TESTING=0
         cmake --build .cmake-build
+    if: ${{ inputs.suite == 'all' || inputs.suite == 'containers' }}
   soundness:
     runs-on: ubuntu-24.04
     steps:
@@ -243,6 +265,7 @@ jobs:
         PATCH_SHA: ${{ inputs.patch_sha }}
         BASE_SHA: ${{ inputs.base_sha }}
       run: |-
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         test "$(git rev-parse HEAD)" = "$PATCH_SHA"
         git merge-base --is-ancestor "$BASE_SHA" HEAD
         git log -1 --format=fuller
@@ -268,3 +291,4 @@ jobs:
         /tmp/lint-env/bin/pip install yamllint flake8 flake8-import-order
         git ls-files -z '*.yml' '*.yaml' | xargs -0 -r /tmp/lint-env/bin/yamllint --strict --config-file validation-tools/.github/workflows/configs/yamllint.yml
         git ls-files -z '*.py' | xargs -0 -r /tmp/lint-env/bin/flake8 --config validation-tools/.github/workflows/configs/.flake8
+    if: ${{ inputs.suite == 'all' }}
