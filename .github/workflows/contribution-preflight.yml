@@ -1,0 +1,270 @@
+name: Contribution preflight
+'on':
+  workflow_dispatch:
+    inputs:
+      patch_sha:
+        description: Full contribution SHA
+        required: true
+        type: string
+      base_sha:
+        description: Full upstream baseline SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        swift:
+        - '6.0'
+        - '6.1'
+        - '6.2'
+        - '6.3'
+    container:
+      image: swift:${{ matrix.swift }}-jammy
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify tested commit and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: |-
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+        git log -1 --format=fuller
+        printf "Baseline: %s\n" "$BASE_SHA"
+    - run: |-
+        swift --version
+        swift build --target generate-manual
+        swift build --target generate-docc-reference
+        swift test
+  macos:
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        swift:
+        - '6.1'
+        - '6.2'
+        - '6.3'
+        - '6.4'
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify tested commit and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: |-
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+        git log -1 --format=fuller
+        printf "Baseline: %s\n" "$BASE_SHA"
+    - uses: swift-actions/setup-swift@7e293214cba9e9225c93ce3267f17f6efdb656a8
+      with:
+        swift-version: ${{ matrix.swift }}
+    - run: |-
+        swift --version
+        xcodebuild -version
+        swift build --target generate-manual
+        swift build --target generate-docc-reference
+        swift test
+  windows:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        swift:
+        - '6.0'
+        - '6.1'
+        - '6.2'
+        - '6.3'
+        - nightly-main
+        - nightly-6.4.x
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify tested commit and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: |-
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+        git log -1 --format=fuller
+        printf "Baseline: %s\n" "$BASE_SHA"
+    - name: Test in upstream Windows container
+      shell: pwsh
+      run: |-
+        $prefix = if ("${{ matrix.swift }}".StartsWith("nightly")) { "swiftlang/swift" } else { "swift" }
+        $image = "${prefix}:${{ matrix.swift }}-windowsservercore-ltsc2022"
+        Start-Service docker
+        docker pull $image
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        docker run --rm -v "${env:GITHUB_WORKSPACE}:C:\source" -w C:\source $image powershell.exe -NoLogo -Command 'swift --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; swift test; exit $LASTEXITCODE'
+        exit $LASTEXITCODE
+  wasm:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        swift:
+        - '6.3'
+        - nightly-main
+        - nightly-6.4.x
+    container:
+      image: ${{ startsWith(matrix.swift, 'nightly') && 'swiftlang/swift' || 'swift' }}:${{ matrix.swift }}-jammy
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify tested commit and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: |-
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+        git log -1 --format=fuller
+        printf "Baseline: %s\n" "$BASE_SHA"
+    - uses: actions/checkout@v7
+      with:
+        repository: swiftlang/github-workflows
+        ref: b9633883fec533530ebd7d5e82ef8ca832c2035f
+        path: validation-tools
+    - run: validation-tools/.github/workflows/scripts/install-and-build-with-sdk.sh --wasm --build-command="swift build --target
+        ArgumentParser" "${{ matrix.swift }}"
+  docs:
+    runs-on: ubuntu-24.04
+    container:
+      image: swift:6.3-noble
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify tested commit and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: |-
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+        git log -1 --format=fuller
+        printf "Baseline: %s\n" "$BASE_SHA"
+    - uses: actions/checkout@v7
+      with:
+        repository: swiftlang/github-workflows
+        ref: b9633883fec533530ebd7d5e82ef8ca832c2035f
+        path: validation-tools
+    - run: validation-tools/.github/workflows/scripts/check-docs.sh
+  format:
+    runs-on: ubuntu-24.04
+    container:
+      image: swiftlang/swift:nightly-6.4.x-noble
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify tested commit and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: |-
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+        git log -1 --format=fuller
+        printf "Baseline: %s\n" "$BASE_SHA"
+    - uses: actions/checkout@v7
+      with:
+        repository: swiftlang/github-workflows
+        ref: b9633883fec533530ebd7d5e82ef8ca832c2035f
+        path: validation-tools
+    - run: |-
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        validation-tools/.github/workflows/scripts/check-swift-format.sh
+  cmake:
+    runs-on: ubuntu-24.04
+    container:
+      image: swift:6.0-jammy
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify tested commit and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: |-
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+        git log -1 --format=fuller
+        printf "Baseline: %s\n" "$BASE_SHA"
+    - run: |-
+        apt-get -qq update
+        apt-get -qq -y install curl ninja-build
+        ARCH=$(uname -m)
+        curl --fail -sL "https://github.com/Kitware/CMake/releases/download/v3.30.2/cmake-3.30.2-linux-$ARCH.tar.gz" -o /tmp/cmake.tar.gz
+        tar xzf /tmp/cmake.tar.gz -C /tmp
+        export PATH="/tmp/cmake-3.30.2-linux-$ARCH/bin:$PATH"
+        cmake --version
+        cmake -GNinja -S . -B .cmake-build -DBUILD_EXAMPLES=1 -DBUILD_TESTING=0
+        cmake --build .cmake-build
+  soundness:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify tested commit and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: |-
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+        git log -1 --format=fuller
+        printf "Baseline: %s\n" "$BASE_SHA"
+    - uses: actions/checkout@v7
+      with:
+        repository: swiftlang/github-workflows
+        ref: b9633883fec533530ebd7d5e82ef8ca832c2035f
+        path: validation-tools
+    - uses: actions/checkout@v7
+      with:
+        repository: apple/swift-mmio
+        path: format-reference
+    - run: |-
+        diff .swift-format format-reference/.swift-format
+        export SCRIPT_ROOT="$GITHUB_WORKSPACE/validation-tools"
+        export PROJECT_NAME="Swift Argument Parser"
+        export UNACCEPTABLE_WORD_LIST="blacklist whitelist slave master sane sanity insane insanity kill killed killing hang hung hanged hanging"
+        validation-tools/.github/workflows/scripts/check-license-header.sh
+        validation-tools/.github/workflows/scripts/check-broken-symlinks.sh
+        validation-tools/.github/workflows/scripts/check-unacceptable-language.sh
+        python3 -m venv /tmp/lint-env
+        /tmp/lint-env/bin/pip install yamllint flake8 flake8-import-order
+        git ls-files -z '*.yml' '*.yaml' | xargs -0 -r /tmp/lint-env/bin/yamllint --strict --config-file validation-tools/.github/workflows/configs/yamllint.yml
+        git ls-files -z '*.py' | xargs -0 -r /tmp/lint-env/bin/flake8 --config validation-tools/.github/workflows/configs/.flake8
