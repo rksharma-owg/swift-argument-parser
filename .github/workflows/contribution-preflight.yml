@@ -162,7 +162,7 @@ jobs:
     - uses: actions/checkout@v7
       with:
         repository: swiftlang/github-workflows
-        ref: b9633883fec533530ebd7d5e82ef8ca832c2035f
+        ref: 9a10bfdc569159a3463f1273fbd7ed5f97fbe598
         path: validation-tools
     - run: validation-tools/.github/workflows/scripts/install-and-build-with-sdk.sh --wasm --build-command="swift build --target
         ArgumentParser" "${{ matrix.swift }}"
@@ -190,7 +190,7 @@ jobs:
     - uses: actions/checkout@v7
       with:
         repository: swiftlang/github-workflows
-        ref: b9633883fec533530ebd7d5e82ef8ca832c2035f
+        ref: 9a10bfdc569159a3463f1273fbd7ed5f97fbe598
         path: validation-tools
     - run: validation-tools/.github/workflows/scripts/check-docs.sh
     if: ${{ inputs.suite == 'all' || inputs.suite == 'containers' }}
@@ -217,7 +217,7 @@ jobs:
     - uses: actions/checkout@v7
       with:
         repository: swiftlang/github-workflows
-        ref: b9633883fec533530ebd7d5e82ef8ca832c2035f
+        ref: 9a10bfdc569159a3463f1273fbd7ed5f97fbe598
         path: validation-tools
     - run: |-
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -275,7 +275,7 @@ jobs:
     - uses: actions/checkout@v7
       with:
         repository: swiftlang/github-workflows
-        ref: b9633883fec533530ebd7d5e82ef8ca832c2035f
+        ref: 9a10bfdc569159a3463f1273fbd7ed5f97fbe598
         path: validation-tools
     - uses: actions/checkout@v7
       with:
@@ -293,4 +293,30 @@ jobs:
         /tmp/lint-env/bin/pip install yamllint flake8 flake8-import-order
         git ls-files -z '*.yml' '*.yaml' | xargs -0 -r /tmp/lint-env/bin/yamllint --strict --config-file validation-tools/.github/workflows/configs/yamllint.yml
         git ls-files -z '*.py' | xargs -0 -r /tmp/lint-env/bin/flake8 --config validation-tools/.github/workflows/configs/.flake8
+    if: ${{ inputs.suite == 'all' }}
+
+  repeat-snippets:
+    runs-on: ubuntu-24.04
+    container:
+      image: swift:6.3-jammy
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.patch_sha }}
+          fetch-depth: 0
+      - name: Verify source SHA
+        shell: bash
+        env:
+          PATCH_SHA: ${{ inputs.patch_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: validation-driver
+      - name: Compile and execute edited documentation snippets
+        run: python3 validation-driver/.github/validation/validate-repeat-snippets.py "$GITHUB_WORKSPACE"
     if: ${{ inputs.suite == 'all' }}
